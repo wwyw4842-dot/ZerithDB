@@ -11,7 +11,9 @@ type Note = {
 };
 
 export default function PlaygroundPage() {
-  const [isOnline, setIsOnline] = useState(true);
+  const [browserOnline, setBrowserOnline] = useState(true);
+  const [manualNetworkEnabled, setManualNetworkEnabled] = useState(true);
+  const isOnline = browserOnline && manualNetworkEnabled;
 
   // Simulated local state for Client A and Client B
   const [clientA, setClientA] = useState<Note[]>(() => [
@@ -25,6 +27,22 @@ export default function PlaygroundPage() {
   const [inputB, setInputB] = useState("");
 
   const [syncCount, setSyncCount] = useState(0);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      setBrowserOnline(navigator.onLine);
+    };
+
+    updateOnlineStatus();
+
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
 
   // Sync logic simulation
   useEffect(() => {
@@ -66,8 +84,19 @@ export default function PlaygroundPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+      {!isOnline && (
+        <div className="sticky top-0 z-[60] flex items-center justify-center bg-red-600 px-6 py-2 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-lg animate-pulse">
+          <WifiOff className="mr-2 h-4 w-4" />
+          Offline
+        </div>
+      )}
+
       {/* HEADER */}
-      <header className="bg-white border-b border-gray-200 px-6 h-16 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+      <header
+        className={`bg-white border-b border-gray-200 px-6 h-16 flex items-center justify-between sticky z-50 shadow-sm ${
+          isOnline ? "top-0" : "top-9"
+        }`}
+      >
         <div className="flex items-center gap-4">
           <Link
             href="/"
@@ -92,15 +121,24 @@ export default function PlaygroundPage() {
             CRDT Sync Operations: {syncCount}
           </div>
           <button
-            onClick={() => setIsOnline(!isOnline)}
+            onClick={() => setManualNetworkEnabled((enabled) => !enabled)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm border ${
               isOnline
                 ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
                 : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
             }`}
+            title={
+              browserOnline
+                ? "Toggle the Playground demo network"
+                : "Browser is offline. Reconnect the device to restore network sync."
+            }
           >
             {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-            {isOnline ? "Network: Online (P2P)" : "Network: Offline"}
+            {isOnline
+              ? "Network: Online (P2P)"
+              : browserOnline
+                ? "Network: Offline"
+                : "Network: Offline (Device)"}
           </button>
         </div>
       </header>
