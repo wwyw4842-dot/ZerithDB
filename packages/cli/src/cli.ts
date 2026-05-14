@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import { createRequire } from "module";
 import { program } from "commander";
 import chalk from "chalk";
 import { initCommand } from "./commands/init.js";
 import { signalCommand } from "./commands/signal.js";
 
-const VERSION = "0.1.0";
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json") as { version: string };
+const VERSION = pkg.version;
 
 console.log(
   chalk.cyan(`
