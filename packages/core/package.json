@@ -18,12 +18,13 @@
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
     "lint": "eslint src --ext .ts",
     "clean": "rimraf dist"
   },
   "devDependencies": {
-    "zerithdb-eslint-config": "workspace:*",
-    "zerithdb-tsconfig": "workspace:*",
+    "zerithdb-eslint-config": "*",
+    "zerithdb-tsconfig": "*",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
@@ -35,5 +36,8 @@
   "files": [
     "dist",
     "src"
-  ]
+  ],
+  "dependencies": {
+    "zerithdb-errors": "workspace:*"
+  }
 }
