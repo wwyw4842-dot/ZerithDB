@@ -60,7 +60,11 @@ const req = createRequire(root + "/package.json"),
       const oldRead = await p.evaluate(async (id) => {
         const db = new window.API({ appId: id });
         try {
-          return await db.collection("a").find();
+          const collection = db.collection("a");
+          const [existing] = await collection.find();
+          await collection.update({ _id: existing._id }, { $set: { text: "edited by legacy 雪" } });
+          await collection.insert({ text: "inserted by legacy" });
+          return await collection.find();
         } finally {
           await db.dispose();
         }
@@ -75,10 +79,11 @@ const req = createRequire(root + "/package.json"),
         }
       }, id);
       const retained =
-        after.a.length === 1 &&
+        after.a.length === 2 &&
         after.b.length === 1 &&
         JSON.stringify(after.a) === JSON.stringify(oldRead) &&
-        after.a[0].text === "first 雪" &&
+        after.a.some((doc) => doc.text === "edited by legacy 雪") &&
+        after.a.some((doc) => doc.text === "inserted by legacy") &&
         after.b[0].text === "second";
       results.push({ initialVersion, oldRead, after, retained });
       if (!retained) process.exitCode = 1;
