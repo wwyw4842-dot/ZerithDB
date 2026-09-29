@@ -1,6 +1,7 @@
 import logging
 import uuid
-from typing import Callable, Dict, Any, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .network import NetworkManager
 
@@ -14,8 +15,8 @@ class ZerithClient:
         self.signaling_url = signaling_url
         self.peer_id = str(uuid.uuid4())
         self.network = NetworkManager(self.signaling_url, self.peer_id)
-        self.handlers: Dict[str, Callable[[Any], Awaitable[None]]] = {}
-        self.db_state: Dict[str, Dict[str, Any]] = {}
+        self.handlers: dict[str, Callable[[Any], Awaitable[None]]] = {}
+        self.db_state: dict[str, dict[str, Any]] = {}
         
         # Setup network callbacks
         self.network.on_message = self._handle_network_message

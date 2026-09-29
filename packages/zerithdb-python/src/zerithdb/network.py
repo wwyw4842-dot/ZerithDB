@@ -1,10 +1,11 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Optional, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import websockets
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCDataChannel
+from aiortc import RTCDataChannel, RTCPeerConnection, RTCSessionDescription
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +14,10 @@ class NetworkManager:
     def __init__(self, signaling_url: str, local_peer_id: str):
         self.signaling_url = signaling_url
         self.local_peer_id = local_peer_id
-        self.ws: Optional[Any] = None
-        self.peers: Dict[str, RTCPeerConnection] = {}
-        self.channels: Dict[str, RTCDataChannel] = {}
-        self.on_message: Optional[Callable[[dict, str], Awaitable[None]]] = None
+        self.ws: Any | None = None
+        self.peers: dict[str, RTCPeerConnection] = {}
+        self.channels: dict[str, RTCDataChannel] = {}
+        self.on_message: Callable[[dict, str], Awaitable[None]] | None = None
         self._disconnect_event = asyncio.Event()
 
     async def connect(self, room_id: str):
@@ -32,8 +33,8 @@ class NetworkManager:
         except websockets.ConnectionClosed:
             logger.info("Signaling server disconnected.")
             self._disconnect_event.set()
-        except Exception as e:
-            logger.error(f"Signaling error: {e}")
+        except Exception:
+            logger.exception("Signaling error")
             self._disconnect_event.set()
 
     async def _handle_signaling_message(self, msg: dict):
@@ -68,7 +69,7 @@ class NetworkManager:
                 # are bundled in SDP or handled directly.
                 pass
 
-    async def _create_peer(self, remote_peer_id: str, initiator: bool, offer_payload: dict = None):
+    async def _create_peer(self, remote_peer_id: str, initiator: bool, offer_payload: dict | None = None):
         if remote_peer_id in self.peers:
             return
 
@@ -122,8 +123,8 @@ class NetworkManager:
                 try:
                     data = json.loads(message)
                     asyncio.create_task(self.on_message(data, remote_peer_id))
-                except Exception as e:
-                    logger.error(f"Failed to parse P2P message: {e}")
+                except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                    logger.exception("Failed to parse P2P message")
 
     async def _send_signaling(self, data: dict):
         if self.ws and not self.ws.closed:
