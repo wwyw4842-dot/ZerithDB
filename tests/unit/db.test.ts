@@ -11,7 +11,10 @@ describe("DbClient — CollectionClient", () => {
   let db: DbClient;
 
   beforeEach(() => {
-    db = new DbClient(testConfig);
+    db = new DbClient({
+      ...testConfig,
+      appId: testConfig.appId + Math.random().toString(36).slice(2),
+    });
   });
 
   afterEach(async () => {
