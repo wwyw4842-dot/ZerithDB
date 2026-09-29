@@ -23,7 +23,7 @@
     "version-packages": "changeset version",
     "release": "turbo run build --filter=!./apps/* && changeset publish",
     "prepare": "husky",
-    "test:browser": "turbo run build && node tests/browser/cross-context.cjs"
+    "test:browser": "turbo run build && node tests/browser/cross-context.cjs && node tests/browser/rollback.cjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.7",

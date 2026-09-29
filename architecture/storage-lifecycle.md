@@ -17,8 +17,12 @@ failures cannot change a committed write's result. Client disposal unregisters i
 closes their channels.
 
 Compatibility and rollback: existing database stores and index definitions are preserved. New
-collections add stores and bump the native database version. Do not remove those stores during code
-rollback. Close active clients before rollback; keep a backup of the browser profile. The new schema
-can be reopened by the repaired client in any collection order. Compatibility with every older
-application build and production backup/restore is still an acceptance item; no production rollout
-is claimed here.
+collections add stores and bump the native database version, with a minimum native version of 10
+(the legacy client's Dexie version 1). A smaller version would cause the legacy client to run an
+upgrade that deletes undeclared collections. The Chromium rollback regression loads the exact
+`7606b61` client and verifies both old-created and new-created databases retain their documents and
+second collection after a code rollback and return to the repaired client.
+
+Close active clients before rollback and retain a backup of the browser profile. This test covers
+that exact old client, not every historical app or production profile; production backup/restore and
+registry publication remain separate acceptance items.

@@ -332,11 +332,13 @@ const databaseQueues = new Map<string, Promise<unknown>>();
 async function ensureCollection(databaseName: string, collectionName: string): Promise<void> {
   for (let attempt = 0; attempt < 16; attempt++) {
     const current = await openSchema(databaseName, collectionName);
-    if (current.objectStoreNames.contains(collectionName)) {
+    if (current.objectStoreNames.contains(collectionName) && current.version >= 10) {
       current.close();
       return;
     }
-    const version = current.version + 1;
+    // Legacy Dexie version(1) uses native version 10. A lower version makes a
+    // rollback run its old schema upgrade and delete stores it does not declare.
+    const version = Math.max(10, current.version + 1);
     current.close();
     try {
       const upgraded = await openSchema(databaseName, collectionName, version);
