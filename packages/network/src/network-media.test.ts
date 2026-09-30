@@ -55,4 +55,22 @@ describe("NetworkManager media ownership", () => {
     expect(removed).toHaveBeenCalledExactlyOnceWith({ peerId: "remote", streamId: stream.id });
     await manager.dispose();
   });
+
+  it("cleans remote stream listeners when the peer errors", async () => {
+    const manager = new NetworkManager({ appId: "media" }, {} as never);
+    const internal = manager as any;
+    internal.createPeer("remote-error", true);
+    const stream = media("remote-error-stream").stream;
+    const removed = vi.fn();
+    manager.on("media:stream:removed", removed);
+    const peer = internal.peers.get("remote-error");
+    peer.emit("stream", stream);
+    expect(internal.remoteStreams.get("remote-error")?.has(stream.id)).toBe(true);
+    peer.emit("error", new Error("transport failed"));
+    expect(internal.remoteStreams.has("remote-error")).toBe(false);
+    expect(removed).toHaveBeenCalledExactlyOnceWith({ peerId: "remote-error", streamId: stream.id });
+    stream.dispatchEvent(new Event("inactive"));
+    expect(removed).toHaveBeenCalledTimes(1);
+    await manager.dispose();
+  });
 });

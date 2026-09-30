@@ -455,6 +455,7 @@ export class NetworkManager extends EventEmitter<NetworkEvents> {
     });
 
     peer.on("error", (err: Error) => {
+      this.clearRemoteStreams(remotePeerId);
       this.emit("error", { peerId: remotePeerId, error: err });
       this.peers.delete(remotePeerId);
       this.peerInfo.delete(remotePeerId);
