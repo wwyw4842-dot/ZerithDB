@@ -58,6 +58,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   ) {
     super();
     this.onPeerUpdate = this.onPeerUpdate.bind(this);
+    this.onPeerConnected = this.onPeerConnected.bind(this);
   }
 
   /** Enable P2P sync. Local CRUD changes are projected after hydration. */
@@ -65,6 +66,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     if (this._enabled) return;
     this._enabled = true;
     this.network.on("message", this.onPeerUpdate);
+    this.network.on("peer:connected", this.onPeerConnected);
     this.updateState({ synced: true });
     for (const bridge of this.bridges.values()) {
       void bridge.readyPromise.then(() => {
@@ -81,6 +83,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   disable(): void {
     this._enabled = false;
     this.network.off("message", this.onPeerUpdate);
+    this.network.off("peer:connected", this.onPeerConnected);
     this.updateState({ synced: false });
   }
 
@@ -225,7 +228,9 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
       const previous = bridge.dbSnapshot;
       for (const id of previous.keys()) {
         if (current.has(id)) continue;
-        bridge.records.set(id, JSON.stringify({ deletedAt: Date.now() } satisfies SyncEntry));
+        const previousDocument = previous.get(id);
+        const deletedAt = Math.max(Date.now(), previousDocument?._updatedAt ?? 0);
+        bridge.records.set(id, JSON.stringify({ deletedAt } satisfies SyncEntry));
       }
       for (const [id, document] of current) {
         const existing = readEntry(bridge.records.get(id));
@@ -320,6 +325,14 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
       type: "sync-update",
       payload: this.encodeMessage(collectionName, update),
     });
+  }
+
+  private onPeerConnected(): void {
+    if (!this._enabled) return;
+    for (const bridge of this.bridges.values()) {
+      if (bridge.ready)
+        this.broadcastUpdate(bridge.collectionName, Y.encodeStateAsUpdate(bridge.doc));
+    }
   }
 
   // ─── Network framing ──────────────────────────────────────────────────────
