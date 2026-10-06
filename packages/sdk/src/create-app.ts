@@ -97,6 +97,10 @@ export function createApp(config: ZerithDBConfig): ZerithDBApp {
 
     db<T extends Record<string, any>>(name: string): CollectionClient<T> {
       if (!collectionCache.has(name)) {
+        // Public CRUD is the supported entry point. Install the collection
+        // bridge before returning the handle so callers do not need to know
+        // about the lower-level sync.getDoc() API.
+        sync.getDoc(name);
         collectionCache.set(name, db.collection(name));
       }
       // biome-ignore lint: cache guarantees this is defined
@@ -108,7 +112,11 @@ export function createApp(config: ZerithDBConfig): ZerithDBApp {
     network,
 
     async dispose(): Promise<void> {
-      await Promise.all([sync.dispose(), network.dispose(), db.dispose()]);
+      // Stop and drain collection hydration before closing the DB. Running
+      // these concurrently lets an IndexedDB callback race with db.dispose().
+      await sync.dispose();
+      await network.dispose();
+      await db.dispose();
     },
   };
 }

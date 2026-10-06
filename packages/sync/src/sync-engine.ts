@@ -30,6 +30,7 @@ interface CollectionBridge {
   pendingDb: SyncDocument[] | null;
   dbSnapshot: Snapshot;
   applyingRemote: boolean;
+  closed: boolean;
   queue: Promise<void>;
   readyPromise: Promise<void>;
 }
@@ -52,6 +53,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   private readonly trustedPlugins = new Map<string, SyncPlugin>();
   private activePluginVersion = 1;
   private _enabled = false;
+  private _disposed = false;
   private _state: SyncState = { synced: false, pendingUpdates: 0, connectedPeers: 0 };
 
   constructor(
@@ -152,6 +154,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
    * a Y.Map directly for local writes to sync.
    */
   getDoc(collectionName: string): Y.Doc {
+    if (this._disposed) throw new Error("Sync engine is disposed");
     const existing = this.docs.get(collectionName);
     if (existing) return existing;
 
@@ -175,6 +178,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
       pendingDb: null,
       dbSnapshot: new Map(),
       applyingRemote: false,
+      closed: false,
       queue: Promise.resolve(),
       readyPromise: Promise.resolve(),
     };
@@ -244,8 +248,11 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   }
 
   async dispose(): Promise<void> {
+    if (this._disposed) return;
+    this._disposed = true;
     this.disable();
     for (const bridge of this.bridges.values()) {
+      bridge.closed = true;
       bridge.unsubscribe?.();
       bridge.unsubscribe = null;
       await bridge.queue.catch(() => undefined);
@@ -261,13 +268,18 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   // ─── CRUD/Yjs bridge ──────────────────────────────────────────────────────
 
   private enqueue(bridge: CollectionBridge, task: () => Promise<void>): Promise<void> {
-    const next = bridge.queue.then(task, task);
+    const next = bridge.queue.then(
+      () => (bridge.closed ? undefined : task()),
+      () => (bridge.closed ? undefined : task())
+    );
     bridge.queue = next.catch(() => undefined);
     return next;
   }
 
   private async hydrateBridge(bridge: CollectionBridge): Promise<void> {
+    if (bridge.closed) return;
     const localDocuments = bridge.pendingDb ?? ((await bridge.collection.find()) as SyncDocument[]);
+    if (bridge.closed) return;
     const resolved = this.resolveSnapshot(bridge, localDocuments);
 
     bridge.applyingRemote = true;
@@ -284,7 +296,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   }
 
   private async reconcileDbToDoc(bridge: CollectionBridge): Promise<void> {
-    if (!bridge.ready || bridge.applyingRemote) return;
+    if (bridge.closed || !bridge.ready || bridge.applyingRemote) return;
     const localDocuments = bridge.pendingDb ?? ((await bridge.collection.find()) as SyncDocument[]);
     const current = toSnapshot(localDocuments);
     const changed = !snapshotsEqual(current, bridge.dbSnapshot);
@@ -310,7 +322,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   }
 
   private async reconcileDocToDb(bridge: CollectionBridge): Promise<void> {
-    if (!bridge.ready || bridge.applyingRemote) return;
+    if (bridge.closed || !bridge.ready || bridge.applyingRemote) return;
     const localDocuments = bridge.pendingDb ?? ((await bridge.collection.find()) as SyncDocument[]);
     const resolved = this.resolveSnapshot(bridge, localDocuments);
     const current = toSnapshot(localDocuments);
