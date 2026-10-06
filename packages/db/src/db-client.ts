@@ -8,7 +8,7 @@ import type {
   UpdateSpec,
 } from "zerithdb-core";
 import { ZerithDBError, ErrorCode } from "zerithdb-core";
-import { atomicAddAll, atomicDelete, atomicModify } from "./idb-atomic.js";
+import { atomicAddAll, atomicDelete, atomicModify, atomicReplace } from "./idb-atomic.js";
 
 const collectionListeners = new Map<string, Set<() => void>>();
 
@@ -245,6 +245,33 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
       throw new ZerithDBError(
         ErrorCode.DB_DELETE_FAILED,
         `Failed to clear collection "${this.collectionName}"`,
+        { cause: err }
+      );
+    }
+  }
+
+  /**
+   * Atomically replace this collection with a trusted sync snapshot.
+   *
+   * This is intentionally a narrow primitive for the sync engine.  It keeps
+   * document ids and timestamps from the remote replica, while ensuring a
+   * failed write aborts the entire replacement instead of exposing a partial
+   * local state to subscribers.
+   */
+  async applySyncSnapshot(documents: readonly Document<T>[]): Promise<void> {
+    if (!Array.isArray(documents)) throw new Error("Sync snapshot must be an array");
+    for (const document of documents) {
+      if (!document || typeof document !== "object" || typeof document._id !== "string") {
+        throw new Error("Sync snapshot contains an invalid document");
+      }
+    }
+    try {
+      await this.withTable((table) => atomicReplace(table, documents));
+      this.changed();
+    } catch (err) {
+      throw new ZerithDBError(
+        ErrorCode.DB_WRITE_FAILED,
+        `Failed to apply sync snapshot to "${this.collectionName}"`,
         { cause: err }
       );
     }

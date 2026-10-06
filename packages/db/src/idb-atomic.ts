@@ -115,3 +115,55 @@ export async function atomicDelete<T>(
   });
   return deleted;
 }
+
+/**
+ * Replace the complete contents of a collection in one native transaction.
+ *
+ * Sync hydration needs this operation because a remote snapshot can contain
+ * both inserts/updates and deletes.  Doing those as separate Dexie calls can
+ * expose a partially applied snapshot to readers (and a failed second call
+ * would leave the local replica divergent), so all cursor mutations happen in
+ * the same readwrite transaction and any request error aborts it.
+ */
+export async function atomicReplace<T extends { _id: string }>(
+  table: Table<T>,
+  documents: readonly T[]
+): Promise<void> {
+  const replacement = new Map(documents.map((document) => [document._id, document]));
+  if (replacement.size !== documents.length) {
+    throw new Error("Cannot replace a collection with duplicate document ids");
+  }
+
+  await nativeReadWrite(table, (store, fail) => {
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        for (const document of replacement.values()) {
+          try {
+            store.put(document);
+          } catch (error) {
+            fail(error);
+            return;
+          }
+        }
+        return;
+      }
+
+      try {
+        const id = String(cursor.primaryKey);
+        const document = replacement.get(id);
+        if (document) {
+          cursor.update(document);
+          replacement.delete(id);
+        } else {
+          cursor.delete();
+        }
+        cursor.continue();
+      } catch (error) {
+        fail(error);
+      }
+    };
+    request.onerror = () => fail(request.error ?? new Error("Failed to read collection"));
+  });
+}
