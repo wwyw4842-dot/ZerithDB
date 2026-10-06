@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
-import type { ZerithDBConfig, SyncState, Document } from "zerithdb-core";
+import type { ZerithDBConfig, SyncState, SyncPlugin, Document } from "zerithdb-core";
 import { EventEmitter } from "zerithdb-core";
 import type { DbClient, CollectionClient } from "zerithdb-db";
 import type { NetworkManager } from "zerithdb-network";
@@ -48,6 +48,9 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   private readonly persistences = new Map<string, IndexeddbPersistence>();
   private readonly bridges = new Map<string, CollectionBridge>();
   private readonly pendingUpdates = new Map<string, Uint8Array[]>();
+  private readonly plugins = new Map<string, SyncPlugin>();
+  private readonly trustedPlugins = new Map<string, SyncPlugin>();
+  private activePluginVersion = 1;
   private _enabled = false;
   private _state: SyncState = { synced: false, pendingUpdates: 0, connectedPeers: 0 };
 
@@ -89,6 +92,58 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
 
   get state(): Readonly<SyncState> {
     return this._state;
+  }
+
+  /**
+   * Register application-bundled plugin code in the local trust registry.
+   *
+   * The registry stores objects, never URLs or peer-provided module source.
+   * A lower revision cannot replace a newer trusted revision for the same ID.
+   */
+  trustPlugin(plugin: SyncPlugin): void {
+    this.validatePlugin(plugin);
+    const current = this.trustedPlugins.get(plugin.id);
+    if (current && current.version > plugin.version) {
+      throw new Error("Cannot replace a trusted sync plugin with an older revision");
+    }
+    this.trustedPlugins.set(plugin.id, plugin);
+  }
+
+  /** Activate a plugin that was registered by local application code. */
+  registerPlugin(plugin: SyncPlugin): void {
+    // Validate and compare before mutating the trust registry. A stale local
+    // registration must not leave an identifier available for later loading.
+    this.validatePlugin(plugin);
+    if (plugin.version < this.activePluginVersion) {
+      throw new Error("Stale sync plugin revision");
+    }
+    this.trustPlugin(plugin);
+    this.plugins.set(plugin.id, plugin);
+    this.activePluginVersion = Math.max(this.activePluginVersion, plugin.version);
+  }
+
+  /** Activate a trusted local plugin by identifier; URLs are intentionally unsupported. */
+  async loadPlugin(pluginId: string): Promise<void> {
+    const plugin = this.trustedPlugins.get(pluginId);
+    if (!plugin) throw new Error("Untrusted sync plugin");
+    this.registerPlugin(plugin);
+  }
+
+  /** Advertise a locally trusted, newer protocol revision to connected peers. */
+  proposeUpgrade(pluginId: string, version: number): void {
+    const plugin = this.trustedPlugins.get(pluginId);
+    if (
+      !plugin ||
+      plugin.version !== version ||
+      !Number.isSafeInteger(version) ||
+      version <= this.activePluginVersion
+    ) {
+      throw new Error("Untrusted or stale sync plugin upgrade");
+    }
+    this.network.broadcast({
+      type: "sync-upgrade-offer",
+      payload: JSON.stringify({ pluginId, version }),
+    });
   }
 
   /**
@@ -160,7 +215,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
         this.pendingUpdates.set(collectionName, pending);
         return;
       }
-      this.broadcastUpdate(collectionName, update);
+      void this.broadcastUpdate(collectionName, update);
     });
     return doc;
   }
@@ -171,10 +226,21 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     update: Uint8Array,
     fromPeer: string
   ): Promise<void> {
+    let finalUpdate: Uint8Array | null = update;
+    try {
+      for (const plugin of this.plugins.values()) {
+        if (!plugin.onBeforeApplyUpdate) continue;
+        finalUpdate = await plugin.onBeforeApplyUpdate(collectionName, finalUpdate, fromPeer);
+        if (!finalUpdate) return;
+      }
+    } catch {
+      // A plugin failure must not apply unverified peer data or alter local state.
+      return;
+    }
     const doc = this.getDoc(collectionName);
-    Y.applyUpdate(doc, update, REMOTE_ORIGIN);
+    Y.applyUpdate(doc, finalUpdate, REMOTE_ORIGIN);
     await this.bridges.get(collectionName)?.queue;
-    this.emit("update:remote", { collectionName, update, fromPeer });
+    this.emit("update:remote", { collectionName, update: finalUpdate, fromPeer });
   }
 
   async dispose(): Promise<void> {
@@ -315,15 +381,26 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     const pending = this.pendingUpdates.get(collectionName);
     if (!pending?.length) return;
     this.pendingUpdates.delete(collectionName);
-    this.broadcastUpdate(collectionName, Y.mergeUpdates(pending));
+    void this.broadcastUpdate(collectionName, Y.mergeUpdates(pending));
   }
 
-  private broadcastUpdate(collectionName: string, update: Uint8Array): void {
+  private async broadcastUpdate(collectionName: string, update: Uint8Array): Promise<void> {
     if (!this._enabled) return;
-    this.emit("update:local", { collectionName, update });
+    let finalUpdate: Uint8Array | null = update;
+    try {
+      for (const plugin of this.plugins.values()) {
+        if (!plugin.onBeforeSendUpdate) continue;
+        finalUpdate = await plugin.onBeforeSendUpdate(collectionName, finalUpdate);
+        if (!finalUpdate) return;
+      }
+    } catch {
+      // A failed local transform is dropped rather than sent in raw form.
+      return;
+    }
+    this.emit("update:local", { collectionName, update: finalUpdate });
     this.network.broadcast({
       type: "sync-update",
-      payload: this.encodeMessage(collectionName, update),
+      payload: this.encodeMessage(collectionName, finalUpdate),
     });
   }
 
@@ -331,18 +408,75 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     if (!this._enabled) return;
     for (const bridge of this.bridges.values()) {
       if (bridge.ready)
-        this.broadcastUpdate(bridge.collectionName, Y.encodeStateAsUpdate(bridge.doc));
+        void this.broadcastUpdate(bridge.collectionName, Y.encodeStateAsUpdate(bridge.doc));
     }
   }
 
   // ─── Network framing ──────────────────────────────────────────────────────
 
   private onPeerUpdate(msg: { type: string; payload: Uint8Array | string; from: string }): void {
+    if (msg.type === "sync-upgrade-offer") {
+      this.handleUpgradeOffer(msg);
+      return;
+    }
     if (msg.type !== "sync-update") return;
     const payload = typeof msg.payload === "string" ? base64ToBytes(msg.payload) : msg.payload;
     const decoded = this.decodeMessage(payload);
     if (decoded === null) return;
     void this.applyRemoteUpdate(decoded.collectionName, decoded.update, msg.from);
+  }
+
+  private handleUpgradeOffer(msg: {
+    type: string;
+    payload: Uint8Array | string;
+    from: string;
+  }): void {
+    const payload =
+      typeof msg.payload === "string" ? msg.payload : new TextDecoder().decode(msg.payload);
+    try {
+      const offer = JSON.parse(payload) as {
+        pluginId?: unknown;
+        version?: unknown;
+        pluginUrl?: unknown;
+      };
+      // URL fields are explicitly rejected, even when a peer also sends a valid ID.
+      if (
+        offer.pluginUrl !== undefined ||
+        typeof offer.pluginId !== "string" ||
+        !/^[A-Za-z0-9_-]+$/.test(offer.pluginId) ||
+        typeof offer.version !== "number" ||
+        !Number.isSafeInteger(offer.version) ||
+        offer.version < 1 ||
+        offer.version <= this.activePluginVersion
+      ) {
+        return;
+      }
+      const plugin = this.trustedPlugins.get(offer.pluginId);
+      if (!plugin || plugin.version !== offer.version) return;
+
+      // Activation and acknowledgement are synchronous local registry operations.
+      this.registerPlugin(plugin);
+      this.network.sendTo(msg.from, {
+        type: "sync-upgrade-accept",
+        payload: JSON.stringify({ pluginId: plugin.id, version: plugin.version }),
+      });
+    } catch {
+      // Malformed, stale, unknown, or executable offers are ignored atomically.
+    }
+  }
+
+  private validatePlugin(plugin: SyncPlugin): void {
+    if (
+      !plugin ||
+      !/^[A-Za-z0-9_-]+$/.test(plugin.id) ||
+      !Number.isSafeInteger(plugin.version) ||
+      plugin.version < 1 ||
+      (plugin.onBeforeApplyUpdate !== undefined &&
+        typeof plugin.onBeforeApplyUpdate !== "function") ||
+      (plugin.onBeforeSendUpdate !== undefined && typeof plugin.onBeforeSendUpdate !== "function")
+    ) {
+      throw new Error("Invalid trusted sync plugin");
+    }
   }
 
   private encodeMessage(collectionName: string, update: Uint8Array): string {
