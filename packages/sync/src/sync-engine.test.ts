@@ -156,4 +156,37 @@ describe("SyncEngine CRUD bridge", () => {
     expect(await collection.findById(inserted.id)).toEqual(before[0]);
     await db.dispose();
   });
+
+  it("rejects malformed snapshots and ignores malformed Yjs entries", async () => {
+    const config = { appId: `zd04-malformed-${++sequence}` } as ZerithDBConfig;
+    const db = new DbClient(config);
+    const network = new TestNetwork("malformed");
+    const sync = new SyncEngine(config, db, network as unknown as NetworkManager);
+    active.push({ sync, db, network });
+    const collection = db.collection<{ text: string }>("todos");
+    const { id } = await collection.insert({ text: "safe" });
+    const before = await collection.find();
+    const valid = before[0]!;
+
+    for (const malformed of [
+      { ...valid, _createdAt: Number.NaN },
+      { ...valid, _updatedAt: Number.POSITIVE_INFINITY },
+      { ...valid, _createdAt: undefined },
+      { ...valid, _updatedAt: undefined },
+    ]) {
+      await expect(collection.applySyncSnapshot([malformed] as any)).rejects.toThrow();
+    }
+    expect(await collection.findById(id)).toEqual(valid);
+
+    const doc = sync.getDoc("todos");
+    await wait(50);
+    const records = doc.getMap<string>("records");
+    records.set("bad-json", "{not-json");
+    records.set(
+      "bad-document",
+      JSON.stringify({ document: { _id: "bad-document", _createdAt: null, _updatedAt: null } })
+    );
+    await wait(80);
+    expect(await collection.find()).toEqual(before);
+  });
 });

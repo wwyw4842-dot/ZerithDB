@@ -384,8 +384,14 @@ function readEntry(raw: string | undefined): SyncEntry | null {
   try {
     const value = JSON.parse(raw) as SyncEntry;
     if (!value || typeof value !== "object") return null;
-    if (value.document && typeof value.document._id === "string")
+    if (
+      value.document &&
+      typeof value.document._id === "string" &&
+      Number.isFinite(value.document._createdAt) &&
+      Number.isFinite(value.document._updatedAt)
+    ) {
       return { document: value.document };
+    }
     if (Number.isFinite(value.deletedAt)) return { deletedAt: value.deletedAt };
   } catch {
     // Corrupt Yjs values are ignored; the local snapshot remains authoritative.

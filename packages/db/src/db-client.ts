@@ -261,7 +261,13 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
   async applySyncSnapshot(documents: readonly Document<T>[]): Promise<void> {
     if (!Array.isArray(documents)) throw new Error("Sync snapshot must be an array");
     for (const document of documents) {
-      if (!document || typeof document !== "object" || typeof document._id !== "string") {
+      if (
+        !document ||
+        typeof document !== "object" ||
+        typeof document._id !== "string" ||
+        !Number.isFinite(document._createdAt) ||
+        !Number.isFinite(document._updatedAt)
+      ) {
         throw new Error("Sync snapshot contains an invalid document");
       }
     }
