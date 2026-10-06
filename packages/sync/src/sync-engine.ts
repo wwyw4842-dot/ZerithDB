@@ -231,7 +231,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
       for (const plugin of this.plugins.values()) {
         if (!plugin.onBeforeApplyUpdate) continue;
         finalUpdate = await plugin.onBeforeApplyUpdate(collectionName, finalUpdate, fromPeer);
-        if (!finalUpdate) return;
+        if (!finalUpdate || !(finalUpdate instanceof Uint8Array)) return;
       }
     } catch {
       // A plugin failure must not apply unverified peer data or alter local state.
@@ -391,7 +391,7 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
       for (const plugin of this.plugins.values()) {
         if (!plugin.onBeforeSendUpdate) continue;
         finalUpdate = await plugin.onBeforeSendUpdate(collectionName, finalUpdate);
-        if (!finalUpdate) return;
+        if (!finalUpdate || !(finalUpdate instanceof Uint8Array)) return;
       }
     } catch {
       // A failed local transform is dropped rather than sent in raw form.
