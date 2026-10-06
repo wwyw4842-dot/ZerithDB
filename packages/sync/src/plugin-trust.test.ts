@@ -85,10 +85,8 @@ describe("SyncEngine trusted plugin negotiation", () => {
     engine.registerPlugin({
       id: "dropper",
       version: 1,
-      onBeforeSendUpdate: () => null,
-      onBeforeApplyUpdate: () => {
-        throw new Error("plugin failure");
-      },
+      onBeforeSendUpdate: () => "raw" as any,
+      onBeforeApplyUpdate: () => "raw" as any,
     });
     engine.enable();
 
