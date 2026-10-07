@@ -26,3 +26,21 @@ second collection after a code rollback and return to the repaired client.
 Close active clients before rollback and retain a backup of the browser profile. This test covers
 that exact old client, not every historical app or production profile; production backup/restore and
 registry publication remain separate acceptance items.
+
+## React provider and query ownership
+
+`zerithdb-react` uses the public SDK `app.db(name)` entry point, so subscription and insert/remove
+share the same collection bridge. Remove passes an `_id` filter, preserving other documents. Query
+snapshots belong to both app instance and collection name; owner changes show a loading state
+immediately and cleanup rejects late read/error callbacks. Failed reads are exposed through the
+hook's existing `error` field and successful committed refresh clears it.
+
+Provider replacement/unmount drains SDK disposal. A mount count plus a one-time disposal flag delays
+cleanup by one microtask, preserving the same client through React StrictMode's immediate effect
+rehearsal while releasing replaced and unmounted clients. Real IndexedDB/Chromium regression also
+reopens the previous app namespace and verifies its stored data. No storage schema or sync framing
+changes.
+
+The acceptance browser bundler uses simple-peer's published browser bundle to include its Node
+shims. This does not prove every consumer bundler works without browser polyfills. Registry
+publication, real cross-device transport and installed application observation remain separate.
