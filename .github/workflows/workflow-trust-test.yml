@@ -1,0 +1,34 @@
+name: Workflow trust policy
+
+on:
+  pull_request:
+    branches: [main, dev, feat/offline-indicator]
+    paths:
+      - .github/scripts/workflow_trust.py
+      - .github/workflows/ai-pr-review.yml
+      - .github/workflows/approve-label-handler.yml
+      - .github/workflows/auto-merge.yml
+      - .github/workflows/workflow-trust-test.yml
+      - tests/workflow-trust/**
+  push:
+    branches: [main, dev, feat/offline-indicator]
+    paths:
+      - .github/scripts/workflow_trust.py
+      - tests/workflow-trust/**
+
+permissions:
+  contents: read
+
+jobs:
+  policy-tests:
+    name: Workflow policy regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run wrong-run, stale-head and malicious-input regressions
+        run: python3 -m unittest discover -s tests/workflow-trust -v
