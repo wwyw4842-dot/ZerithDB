@@ -148,6 +148,21 @@ export class AuthManager extends EventEmitter<AuthEvents> {
     }
   }
 
+  /** Social recovery is withheld until versioned shares and an independent
+   * cryptographic review are available. Never replace an identity with output
+   * from the legacy unvalidated WASM shard format. */
+  readonly recoverySupported: boolean = false;
+
+  async generateRecoveryShards(_threshold: number, _total: number): Promise<string[]> {
+    throw new ZerithDBError(ErrorCode.AUTH_KEY_GENERATION_FAILED,
+      "Social recovery is not available: the share format has not passed validation.");
+  }
+
+  async recoverIdentity(_shards: string[]): Promise<Identity> {
+    throw new ZerithDBError(ErrorCode.AUTH_VERIFY_FAILED,
+      "Social recovery is not available. Your existing identity has not been changed.");
+  }
+
   /** The currently loaded identity, or null if not signed in */
   get identity(): Identity | null {
     return this._identity;

@@ -1,0 +1,27 @@
+{
+  "name": "zerithdb-recovery-gate-harness",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config vitest.config.mjs",
+    "typecheck": "tsc --project ../recovery.tsconfig.json",
+    "browser": "node ../../scripts/diagnostics/zd06-browser.mjs"
+  },
+  "devDependencies": {
+    "@noble/ed25519": "2.3.0",
+    "@noble/hashes": "1.8.0",
+    "@playwright/test": "1.60.0",
+    "@types/node": "22.19.18",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "framer-motion": "12.38.0",
+    "happy-dom": "20.9.0",
+    "lucide-react": "1.14.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "typescript": "5.9.3",
+    "vite": "7.3.3",
+    "vitest": "4.1.6"
+  }
+}

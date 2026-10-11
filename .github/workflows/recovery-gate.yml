@@ -1,0 +1,32 @@
+name: Recovery unavailable gate
+
+on:
+  pull_request:
+    branches: [feat/offline-indicator]
+  push:
+    branches: [feat/offline-indicator, fix/zd06-crypto-boundaries]
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22.22.0"
+      - name: Install only the locked recovery test dependencies
+        run: npm ci --prefix tests/recovery-harness --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium and system dependencies
+        working-directory: tests/recovery-harness
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Check actual Auth and UI sources
+        run: |
+          npm run typecheck --prefix tests/recovery-harness
+          npm test --prefix tests/recovery-harness
+          npm run browser --prefix tests/recovery-harness
