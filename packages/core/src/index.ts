@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export { EventEmitter } from "./internal/event-emitter.js";
-export { ZerithDBError, ErrorCode } from "./internal/errors.js";
+export { ZerithDBError, ErrorCode } from "zerithdb-errors";
 export { Logger } from "./internal/logger.js";
 export type {
   ZerithDBConfig,
