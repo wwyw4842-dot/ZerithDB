@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium } from "@playwright/test";
+const require = createRequire(
+  new URL("../../tests/recovery-harness/package.json", import.meta.url)
+);
+const { chromium } = require("@playwright/test");
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const reservation = createServer();
@@ -15,10 +20,9 @@ const port = reservation.address().port;
 await new Promise((resolve) => reservation.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
 const server = spawn(
-  "pnpm",
+  process.execPath,
   [
-    "exec",
-    "vite",
+    join(dirname(require.resolve("vite/package.json")), "bin/vite.js"),
     "--config",
     "tests/recovery.browser.config.mjs",
     "--host",

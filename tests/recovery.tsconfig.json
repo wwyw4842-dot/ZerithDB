@@ -3,10 +3,19 @@
   "compilerOptions": {
     "noEmit": true,
     "jsx": "react-jsx",
+    "typeRoots": ["./recovery-harness/node_modules/@types"],
     "paths": {
       "zerithdb-core": ["../packages/core/src/index.ts"],
       "zerithdb-errors": ["../packages/errors/src/index.ts"],
-      "zerithdb-auth": ["../packages/auth/src/index.ts"]
+      "zerithdb-auth": ["../packages/auth/src/index.ts"],
+      "@noble/ed25519": ["./recovery-harness/node_modules/@noble/ed25519"],
+      "@noble/hashes/*": ["./recovery-harness/node_modules/@noble/hashes/*"],
+      "vitest": ["./recovery-harness/node_modules/vitest"],
+      "react": ["./recovery-harness/node_modules/@types/react"],
+      "react/*": ["./recovery-harness/node_modules/@types/react/*"],
+      "react-dom/*": ["./recovery-harness/node_modules/@types/react-dom/*"],
+      "framer-motion": ["./recovery-harness/node_modules/framer-motion"],
+      "lucide-react": ["./recovery-harness/node_modules/lucide-react"]
     }
   },
   "include": [

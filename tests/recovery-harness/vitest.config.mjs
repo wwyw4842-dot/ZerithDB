@@ -1,13 +1,9 @@
 import { defineConfig } from "vitest/config";
-import { resolve } from "node:path";
+import { aliases, root } from "./aliases.mjs";
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      "zerithdb-core": resolve(__dirname, "../packages/core/src/index.ts"),
-      "zerithdb-errors": resolve(__dirname, "../packages/errors/src/index.ts"),
-    },
-  },
+  root,
+  resolve: { alias: aliases },
   esbuild: { jsx: "automatic" },
   test: {
     environment: "happy-dom",

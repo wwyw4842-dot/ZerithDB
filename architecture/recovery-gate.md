@@ -62,12 +62,13 @@ old evidence until then.
 
 ## Verification
 
-From the repository root, with its development dependencies available:
+From the repository root, using the isolated, locked test harness:
 
 ```sh
-pnpm exec vitest run --config tests/recovery.vitest.config.ts
-pnpm exec tsc --project tests/recovery.tsconfig.json
-node scripts/diagnostics/zd06-browser.mjs
+npm ci --prefix tests/recovery-harness --ignore-scripts --no-audit --no-fund
+npm run typecheck --prefix tests/recovery-harness
+npm test --prefix tests/recovery-harness
+npm run browser --prefix tests/recovery-harness
 node scripts/diagnostics/zd06-legacy-vectors.mjs
 ```
 
@@ -75,8 +76,9 @@ The last command is a diagnostic red suite, not a passing CI test and not
 part of the normal unit suite. Treat its nonzero exit and failed fields as
 unresolved defects, never as successful recovery acceptance.
 
-The browser command requires the workspace Vite executable and installed
-Playwright Chromium. It uses a fresh browser context, a loopback-only fixture,
+The browser command requires Playwright Chromium (install with
+`npx --no-install playwright install chromium` from `tests/recovery-harness`).
+It uses a fresh browser context, a loopback-only fixture,
 actual Auth and UI source, and synthetic keys. No user profile or external
 site is accessed. It checks missing controls, refused calls, stable identity,
 persisted bytes and signature, and zero identity/callback events. This is
@@ -84,8 +86,12 @@ component acceptance, not an end-to-end release of an application route.
 
 The experimental branch has pre-existing dependency-lock drift in
 `infra/signaling-server`; a frozen full-workspace install fails. Local evidence
-used existing installed dependencies without changing manifests or the lockfile.
-That does not establish a clean full build or real CI pass.
+initially used existing installed dependencies. The dedicated recovery workflow
+now installs only `tests/recovery-harness/package-lock.json` and runs the actual
+errors/core/auth/UI sources; aliases select dependency locations, not substitute
+implementations. This focused workflow does not replace the original full
+workspace checks or resolve their lockfile drift. Its status must be checked on
+the exact review head before merge.
 
 Rollback: reverting this guard changes no stored data. Keep the unavailable
 behavior until the crypto gate is met; reverting must not be used to enable

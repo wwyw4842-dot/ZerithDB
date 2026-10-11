@@ -32,5 +32,8 @@ required format/crypto review. This gate is not completion of ZD-06.
 
 Full frozen dependency install is blocked by existing signaling-server
 manifest/lock drift. Local focused tests reused installed dependency trees;
-no full-workspace build/CI success is claimed. Delivery review and exact-head
-CI status are tracked separately by the coordinator.
+no full-workspace build/CI success is claimed. A separate commit introduces
+an isolated npm lockfile and read-only Linux CI for the actual Auth/core/errors
+and UI sources, including Chromium. It does not bypass or replace the original
+workspace checks. Delivery review and exact-head CI status are tracked
+separately by the coordinator.
