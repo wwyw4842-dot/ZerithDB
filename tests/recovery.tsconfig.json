@@ -1,0 +1,17 @@
+{
+  "extends": "../packages/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "zerithdb-core": ["../packages/core/src/index.ts"],
+      "zerithdb-errors": ["../packages/errors/src/index.ts"],
+      "zerithdb-auth": ["../packages/auth/src/index.ts"]
+    }
+  },
+  "include": [
+    "../packages/auth/src/**/*.ts",
+    "../apps/web/src/components/SocialRecovery*.tsx",
+    "../apps/web/src/components/social-recovery.test.ts"
+  ]
+}

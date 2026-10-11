@@ -4,6 +4,7 @@ import { useState } from "react";
 import { KeyRound, ShieldAlert, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthManager } from "zerithdb-auth";
+import SocialRecoveryUnavailable from "./SocialRecoveryUnavailable";
 
 interface SocialRecoveryRestoreProps {
   authManager: AuthManager;
@@ -11,6 +12,13 @@ interface SocialRecoveryRestoreProps {
 }
 
 export default function SocialRecoveryRestore({ authManager, onRecovered }: SocialRecoveryRestoreProps) {
+  if (authManager.recoverySupported !== true) {
+    return <SocialRecoveryUnavailable title="Restore Identity" />;
+  }
+  return <SupportedSocialRecoveryRestore authManager={authManager} onRecovered={onRecovered} />;
+}
+
+function SupportedSocialRecoveryRestore({ authManager, onRecovered }: SocialRecoveryRestoreProps) {
   const [shards, setShards] = useState<string[]>(["", ""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -4,12 +4,20 @@ import { useState } from "react";
 import { ShieldCheck, Copy, AlertCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthManager } from "zerithdb-auth";
+import SocialRecoveryUnavailable from "./SocialRecoveryUnavailable";
 
 interface SocialRecoverySetupProps {
   authManager: AuthManager;
 }
 
 export default function SocialRecoverySetup({ authManager }: SocialRecoverySetupProps) {
+  if (authManager.recoverySupported !== true) {
+    return <SocialRecoveryUnavailable title="Social Recovery Setup" />;
+  }
+  return <SupportedSocialRecoverySetup authManager={authManager} />;
+}
+
+function SupportedSocialRecoverySetup({ authManager }: SocialRecoverySetupProps) {
   const [total, setTotal] = useState(5);
   const [threshold, setThreshold] = useState(3);
   const [shards, setShards] = useState<string[] | null>(null);
