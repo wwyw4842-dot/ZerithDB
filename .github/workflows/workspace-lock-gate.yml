@@ -1,0 +1,77 @@
+name: Workspace lock gate
+
+on:
+  push:
+    branches: [feat/offline-indicator, 'fix/zd06-workspace-lock-*']
+  pull_request:
+    branches: [feat/offline-indicator]
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - '**/package.json'
+      - scripts/diagnostics/check-workspace-lock-preservation.py
+      - .github/workflows/workspace-lock-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-workspace:
+    name: Frozen workspace (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '24.16.0']
+    env:
+      CI: true
+      HUSKY: '0'
+      TURBO_TELEMETRY_DISABLED: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Record toolchain
+        run: |
+          mkdir -p lock-evidence
+          node --version > lock-evidence/node-version.txt
+          pnpm --version > lock-evidence/pnpm-version.txt
+          git rev-parse HEAD > lock-evidence/head.txt
+      - name: Existing versions and resolution records remain intact
+        run: python3 scripts/diagnostics/check-workspace-lock-preservation.py | tee lock-evidence/preservation.json
+      - name: Original baseline rejects its stale lock
+        shell: bash
+        run: |
+          baseline_dir=$(mktemp -d "$RUNNER_TEMP/zerith-lock-baseline.XXXXXX")
+          git archive c73fca46470caa5675efd2f39d2b187c2da7bb80 | tar -x -C "$baseline_dir"
+          set +e
+          pnpm --dir "$baseline_dir" install --frozen-lockfile > lock-evidence/baseline-install.log 2>&1
+          status=$?
+          set -e
+          printf '%s\n' "$status" > lock-evidence/baseline-exit.txt
+          test "$status" -ne 0
+          grep -q 'ERR_PNPM_OUTDATED_LOCKFILE' lock-evidence/baseline-install.log
+      - name: Entire workspace installs with the repaired frozen lock
+        run: pnpm install --frozen-lockfile 2>&1 | tee lock-evidence/candidate-install.log
+      - name: Install does not rewrite the lock
+        run: git diff --exit-code -- pnpm-lock.yaml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workspace-lock-node-${{ matrix.node }}
+          path: lock-evidence/
+          if-no-files-found: error
+          retention-days: 14
