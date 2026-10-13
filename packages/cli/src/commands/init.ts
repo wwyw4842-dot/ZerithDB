@@ -4,7 +4,7 @@ import ora from "ora";
 import chalk from "chalk";
 import { execa } from "execa";
 import prompts from "prompts";
-import { writeFile } from "../utils/writeFile";
+import { writeFile } from "../utils/writeFile.js";
 
 const TEMPLATES: Record<string, string> = {
   todo: "todo-app",
