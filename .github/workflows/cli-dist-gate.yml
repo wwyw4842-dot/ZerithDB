@@ -92,5 +92,7 @@ jobs:
         with:
           name: cli-dist-node-${{ matrix.node }}
           path: cli-evidence/
+          # Only the four validated synthetic scaffold files are copied here.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

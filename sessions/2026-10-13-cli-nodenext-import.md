@@ -1,7 +1,9 @@
 # CLI NodeNext import and build consumption
 
-Target: `feat/offline-indicator`, starting from the exact C0 merge
-`1d9e081adc7e805ee0449aaaad01e28d612842ac`. The product change adds `.js` to
+Target: `feat/offline-indicator`. The original counterexample uses C0 merge
+`1d9e081adc7e805ee0449aaaad01e28d612842ac`; final delivery is rebased onto the
+separately merged utility fix `34f4413b7ea150fcd125d2a4ca6dececcf598419`.
+The product change adds `.js` to
 the existing `writeFile` relative import in `packages/cli/src/commands/init.ts`.
 NodeNext requires that extension; TypeScript resolves it to the existing
 `writeFile.ts`. No compiler setting, dependency version, template content,
@@ -51,3 +53,15 @@ installations are untouched. Roman, Lychee and Notion are excluded.
 Rollback is a source revert of this import and its dedicated acceptance gate;
 it restores the known NodeNext compiler failure and has no database or identity
 migration. Coordinating evidence: `work/zerith-cli-esm-evidence-20261013/`.
+
+## Archive the synthetic ignore file
+
+The initial real Linux push/PR gates passed, but independent artifact inspection
+found that upload-artifact's default hidden-file exclusion omitted the generated
+`.gitignore`. The reports recorded four successful files while the download
+contained three. Those original runs and incomplete artifacts are retained.
+The upload now explicitly includes hidden files within the task's `cli-evidence/`
+directory. The consumer only copies its four validated synthetic scaffold files;
+private HOME/config/cache directories are separate and never uploaded. Product
+code, the consumer checks and all original assertions are unchanged. The fixed
+head requires a new real CI run and four-file archive verification.
