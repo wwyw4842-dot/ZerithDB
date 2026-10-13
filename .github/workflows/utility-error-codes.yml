@@ -1,0 +1,82 @@
+name: Utility error codes
+
+on:
+  push:
+    branches: [feat/offline-indicator, 'fix/zd-utils-error-codes-*']
+  pull_request:
+    branches: [feat/offline-indicator]
+    paths:
+      - packages/errors/**
+      - packages/utils/**
+      - tests/unit/core.test.ts
+      - vitest.config.ts
+      - pnpm-lock.yaml
+      - scripts/diagnostics/verify-utility-error-reports.py
+      - .github/workflows/utility-error-codes.yml
+
+permissions:
+  contents: read
+
+jobs:
+  shared-codes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '24.16.0']
+    env:
+      CI: true
+      HUSKY: '0'
+      TURBO_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Record exact source and toolchain
+        run: |
+          mkdir -p utility-error-evidence
+          git rev-parse HEAD > utility-error-evidence/head.txt
+          git ls-files -s > utility-error-evidence/source-blobs.txt
+          node --version > utility-error-evidence/node-version.txt
+          pnpm --version > utility-error-evidence/pnpm-version.txt
+      - name: Install the unchanged workspace lock
+        run: pnpm install --frozen-lockfile 2>&1 | tee utility-error-evidence/install.log
+      - name: Build the actual shared package and consumer
+        run: |
+          pnpm --filter zerithdb-errors build 2>&1 | tee utility-error-evidence/errors-build.log
+          pnpm --filter zerithdb-utils build 2>&1 | tee utility-error-evidence/utils-build.log
+          pnpm --filter zerithdb-utils typecheck 2>&1 | tee utility-error-evidence/utils-typecheck.log
+      - name: Source regression and original assertions
+        run: >-
+          pnpm exec vitest run packages/utils/src/error-codes.test.ts
+          packages/utils/src/index.test.ts tests/unit/core.test.ts
+          --reporter=junit --outputFile=utility-error-evidence/unit.xml
+      - name: Consume ESM and CJS package exports
+        run: >-
+          node --test --test-reporter=junit
+          packages/utils/test/published-error-codes.test.mjs
+          > utility-error-evidence/consumers.xml
+      - name: Reject missing, empty, failed or skipped acceptance
+        run: >-
+          python3 scripts/diagnostics/verify-utility-error-reports.py
+          utility-error-evidence | tee utility-error-evidence/report.json
+      - name: Build did not rewrite tracked sources
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: utility-error-codes-node-${{ matrix.node }}
+          path: utility-error-evidence/
+          if-no-files-found: error
+          retention-days: 14
