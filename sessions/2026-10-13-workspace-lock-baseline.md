@@ -82,3 +82,15 @@ separately. Correcting that parser did not alter product code or relax pnpm.
 Rollback is a source revert of this lock/guard change. It does not alter any
 stored identity or database, and restores the known non-installable lock; it
 is not an application/data rollback or a recovery implementation.
+
+## Independent CI review correction
+
+The lock/closure and original command evidence passed independent review. The
+review found that a successful `tee` could hide a failed guard or install under
+GitHub's implicit shell. The job now explicitly uses `bash`, whose GitHub
+invocation includes `-e -o pipefail`; local producer-exit controls (42 and 43)
+propagate through the successful `tee`, and the following sentinel never runs.
+A 15-minute job timeout bounds dependency network work. The old baseline gate
+requires exact c73f, a nonzero exit and `ERR_PNPM_OUTDATED_LOCKFILE`, without
+assuming which of its multiple stale importers fails first. This correction
+changes no lock bytes and does not rerun the large install or failed suites.
