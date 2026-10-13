@@ -1,0 +1,98 @@
+name: CLI distribution gate
+
+on:
+  push:
+    branches: [feat/offline-indicator, 'fix/cli-nodenext-import-*']
+  pull_request:
+    branches: [feat/offline-indicator]
+    paths:
+      - packages/cli/**
+      - packages/tsconfig/**
+      - pnpm-lock.yaml
+      - package.json
+      - pnpm-workspace.yaml
+      - scripts/diagnostics/check-cli-dist.mjs
+      - .github/workflows/cli-dist-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  consume-cli:
+    name: CLI build and consumption (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '24.16.0']
+    env:
+      CI: true
+      HUSKY: '0'
+      TURBO_TELEMETRY_DISABLED: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Record exact source and toolchain
+        run: |
+          mkdir -p cli-evidence
+          node --version > cli-evidence/node-version.txt
+          pnpm --version > cli-evidence/pnpm-version.txt
+          git rev-parse HEAD > cli-evidence/head.txt
+          git ls-files -- packages/cli packages/tsconfig package.json pnpm-lock.yaml pnpm-workspace.yaml scripts/diagnostics/check-cli-dist.mjs .github/workflows/cli-dist-gate.yml | xargs sha256sum > cli-evidence/source-sha256.txt
+      - name: Install CLI and config dependencies from the frozen workspace lock
+        run: timeout 300 pnpm --filter 'zerithdb-cli...' install --frozen-lockfile 2>&1 | tee cli-evidence/install.log
+      - name: Exact pre-fix CLI still fails NodeNext type checking
+        run: |
+          baseline_dir=$(mktemp -d "$RUNNER_TEMP/zerith-cli-baseline.XXXXXX")
+          git archive 1d9e081adc7e805ee0449aaaad01e28d612842ac | tar -x -C "$baseline_dir"
+          timeout 180 pnpm --dir "$baseline_dir" --filter 'zerithdb-cli...' install --frozen-lockfile --offline > cli-evidence/baseline-install.log 2>&1
+          set +e
+          timeout 120 pnpm --dir "$baseline_dir" --filter zerithdb-cli typecheck > cli-evidence/baseline-typecheck.log 2>&1
+          status=$?
+          set -e
+          printf '%s\n' "$status" > cli-evidence/baseline-exit.txt
+          test "$status" -eq 2
+          grep -Fq 'src/commands/init.ts(7,27): error TS2835' cli-evidence/baseline-typecheck.log
+      - name: Original CLI typecheck and build
+        run: |
+          timeout 120 pnpm --filter zerithdb-cli typecheck 2>&1 | tee cli-evidence/typecheck.log
+          timeout 120 pnpm --filter zerithdb-cli build 2>&1 | tee cli-evidence/build.log
+          git diff --exit-code -- packages/cli packages/tsconfig pnpm-lock.yaml package.json pnpm-workspace.yaml
+      - name: Missing build output cannot pass a zero-check run
+        run: |
+          control_dir=$(mktemp -d "$RUNNER_TEMP/zerith-cli-missing.XXXXXX")
+          mkdir -p "$control_dir/scripts/diagnostics"
+          cp scripts/diagnostics/check-cli-dist.mjs "$control_dir/scripts/diagnostics/"
+          set +e
+          timeout 60 node "$control_dir/scripts/diagnostics/check-cli-dist.mjs" cli-evidence/missing-artifact > cli-evidence/missing-artifact.log 2>&1
+          status=$?
+          set -e
+          test "$status" -eq 1
+          node --input-type=module -e 'import assert from "node:assert/strict"; import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("cli-evidence/missing-artifact/report.json")); assert.equal(r.status,"FAIL"); assert.equal(r.checks[0].name,"built-entry"); assert.equal(r.checks[0].status,"failed"); assert.equal(r.notExecuted.length,8); assert.equal(r.commands.length,0);'
+      - name: Consume the actual bundled CLI
+        run: |
+          timeout 60 node scripts/diagnostics/check-cli-dist.mjs cli-evidence/consumer | tee cli-evidence/consumer.log
+          node --input-type=module -e 'import assert from "node:assert/strict"; import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("cli-evidence/consumer/report.json")); assert.equal(r.status,"PASS"); assert.equal(r.checks.length,9); assert.ok(r.checks.every(c=>c.status==="passed")); assert.equal(r.commands.length,2); assert.equal(r.files.length,4); assert.equal(r.notExecuted.length,0); assert.equal(r.sandboxRemoved,true);'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cli-dist-node-${{ matrix.node }}
+          path: cli-evidence/
+          # Only the four validated synthetic scaffold files are copied here.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
